@@ -99,9 +99,19 @@ function LoginView({ form, onChange, onSubmit, working }) {
   `;
 }
 
-function LibraryCard({ tool, onEdit }) {
+function LibraryCard({ tool, onEdit, onOpen }) {
+  const cardClassName = [
+    'rounded-[1.75rem] border border-white/80 bg-white/95 p-5 shadow-panel transition',
+    tool.isOwned ? '' : 'cursor-pointer hover:-translate-y-0.5 hover:border-pine/40',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return html`
-    <article className="rounded-[1.75rem] border border-white/80 bg-white/95 p-5 shadow-panel">
+    <article
+      className=${cardClassName}
+      onClick=${tool.isOwned ? undefined : () => onOpen(tool.id)}
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">
@@ -122,12 +132,12 @@ function LibraryCard({ tool, onEdit }) {
           >
             Edit
           </button>`
-        : null}
+        : html`<p className="mt-5 text-sm font-medium text-pine">Click to open in a new tab</p>`}
     </article>
   `;
 }
 
-function LibraryView({ user, tools, loading, onCreate, onEdit, onLogout }) {
+function LibraryView({ user, tools, loading, onCreate, onEdit, onLogout, onOpen }) {
   return html`
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
       <header className="rounded-[2rem] border border-white/70 bg-white/85 p-6 shadow-panel backdrop-blur sm:p-8">
@@ -164,7 +174,14 @@ function LibraryView({ user, tools, loading, onCreate, onEdit, onLogout }) {
         </div>
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           ${tools.length
-            ? tools.map((tool) => html`<${LibraryCard} key=${tool.id} tool=${tool} onEdit=${onEdit} />`)
+            ? tools.map(
+                (tool) => html`<${LibraryCard}
+                  key=${tool.id}
+                  tool=${tool}
+                  onEdit=${onEdit}
+                  onOpen=${onOpen}
+                />`
+              )
             : html`<div className="rounded-[1.75rem] border border-dashed border-slate-300 bg-white/70 p-8 text-sm text-slate-600">
                 No tools yet. Start with “Generate New Tool” to create your first one.
               </div>`}
@@ -386,6 +403,17 @@ function App() {
     }
   }
 
+  async function openSharedTool(toolId) {
+    setError('');
+    setNotice('');
+    try {
+      const data = await requestJson(`/api/tools/${toolId}`);
+      openToolPreview(data.tool.html);
+    } catch (loadError) {
+      setError(loadError.message);
+    }
+  }
+
   async function handleGenerate() {
     setError('');
     setNotice('');
@@ -456,6 +484,7 @@ function App() {
               onCreate=${startNewTool}
               onEdit=${editTool}
               onLogout=${handleLogout}
+              onOpen=${openSharedTool}
             />`
           : html`<${BuilderView}
               draft=${draft}
