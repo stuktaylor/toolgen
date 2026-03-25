@@ -180,3 +180,58 @@ test('tool versions and usage events are recorded', () => {
 
   store.cleanup();
 });
+
+test('deleteTool removes an owner tool from every library and clears related records', () => {
+  const store = makeDb();
+  const owner = store.createUser({
+    email: 'owner@example.com',
+    password: 'hunter2',
+  });
+  const viewer = store.createUser({
+    email: 'viewer@example.com',
+    password: 'hunter3',
+  });
+  const tool = store.saveTool({
+    ownerId: owner.id,
+    name: 'Shared Tool',
+    prompt: 'shared prompt',
+    html: '<html><body>Shared</body></html>',
+    isShared: true,
+  });
+
+  store.createToolVersion({
+    toolId: tool.id,
+    name: tool.name,
+    prompt: tool.prompt,
+    html: tool.html,
+  });
+  store.logUsage({
+    userId: owner.id,
+    toolId: tool.id,
+    action: 'publish',
+    details: tool.name,
+  });
+
+  assert.throws(
+    () => store.deleteTool({ toolId: tool.id, ownerId: viewer.id }),
+    /only the tool owner can delete it/
+  );
+
+  store.deleteTool({ toolId: tool.id, ownerId: owner.id });
+
+  const deletedTool = store.db.prepare('SELECT id FROM tools WHERE id = ?').get(tool.id);
+  const versions = store.db
+    .prepare('SELECT COUNT(*) AS total FROM tool_versions WHERE tool_id = ?')
+    .get(tool.id);
+  const usage = store.db
+    .prepare('SELECT COUNT(*) AS total FROM usage_log WHERE tool_id = ?')
+    .get(tool.id);
+
+  assert.equal(deletedTool, undefined);
+  assert.equal(versions.total, 0);
+  assert.equal(usage.total, 0);
+  assert.equal(store.listVisibleTools(owner.id).length, 0);
+  assert.equal(store.listVisibleTools(viewer.id).length, 0);
+
+  store.cleanup();
+});

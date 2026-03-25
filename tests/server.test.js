@@ -231,3 +231,65 @@ test('publish updates only owner-owned tools', async () => {
 
   harness.cleanup();
 });
+
+test('tool owners can delete a shared tool and it disappears from every user library', async () => {
+  const harness = makeApp();
+  const owner = harness.store.createUser({
+    email: 'owner@example.com',
+    password: 'hunter2',
+  });
+  harness.store.createUser({
+    email: 'viewer@example.com',
+    password: 'hunter3',
+  });
+  const tool = harness.store.saveTool({
+    ownerId: owner.id,
+    name: 'Shared Tool',
+    prompt: 'Build a shared tool',
+    html: '<!DOCTYPE html><html><body>Shared</body></html>',
+    isShared: true,
+  });
+  const ownerAgent = request.agent(harness.app);
+  const viewerAgent = request.agent(harness.app);
+
+  await ownerAgent.post('/api/session/login').send({
+    email: 'owner@example.com',
+    password: 'hunter2',
+  });
+  await viewerAgent.post('/api/session/login').send({
+    email: 'viewer@example.com',
+    password: 'hunter3',
+  });
+
+  const beforeDelete = await viewerAgent.get('/api/tools');
+  const deleted = await ownerAgent.delete(`/api/tools/${tool.id}`);
+  const afterDelete = await viewerAgent.get('/api/tools');
+  const detail = await viewerAgent.get(`/api/tools/${tool.id}`);
+
+  assert.equal(beforeDelete.status, 200);
+  assert.equal(beforeDelete.body.tools.length, 1);
+  assert.equal(deleted.status, 200);
+  assert.equal(deleted.body.ok, true);
+  assert.equal(afterDelete.status, 200);
+  assert.equal(afterDelete.body.tools.length, 0);
+  assert.equal(detail.status, 404);
+
+  harness.cleanup();
+});
+
+test('deleting an unknown tool returns a plain-language 404', async () => {
+  const harness = makeApp();
+  const agent = request.agent(harness.app);
+
+  await agent.post('/api/session/login').send({
+    email: 'owner@example.com',
+    password: 'hunter2',
+  });
+
+  const response = await agent.delete('/api/tools/999999');
+
+  assert.equal(response.status, 404);
+  assert.equal(response.body.error, 'Tool not found.');
+
+  harness.cleanup();
+});

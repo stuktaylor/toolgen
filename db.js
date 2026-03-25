@@ -171,6 +171,26 @@ function saveToolMethod(db) {
   return (input) => (input.toolId ? updateTool(db, input) : insertTool(db, input));
 }
 
+function deleteToolMethod(db) {
+  const deleteRelatedRecords = db.transaction((toolId) => {
+    db.prepare('DELETE FROM tool_versions WHERE tool_id = ?').run(toolId);
+    db.prepare('DELETE FROM usage_log WHERE tool_id = ?').run(toolId);
+    db.prepare('DELETE FROM tools WHERE id = ?').run(toolId);
+  });
+
+  return ({ toolId, ownerId }) => {
+    const existing = readToolById(db, toolId);
+    if (!existing) {
+      throw new Error('Tool not found.');
+    }
+    if (existing.ownerId !== ownerId) {
+      throw new Error('only the tool owner can delete it');
+    }
+    deleteRelatedRecords(toolId);
+    return existing;
+  };
+}
+
 function createToolVersionMethod(db) {
   return ({ toolId, name, prompt, html }) => {
     const createdAt = now();
@@ -209,6 +229,7 @@ function createDb({ filename = 'toolsgen.db' } = {}) {
     listVisibleTools: listVisibleToolsMethod(db),
     getVisibleTool: getVisibleToolMethod(db),
     saveTool: saveToolMethod(db),
+    deleteTool: deleteToolMethod(db),
     createToolVersion: createToolVersionMethod(db),
     logUsage: logUsageMethod(db),
     close: () => db.close(),

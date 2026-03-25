@@ -99,18 +99,15 @@ function LoginView({ form, onChange, onSubmit, working }) {
   `;
 }
 
-function LibraryCard({ tool, onEdit, onOpen }) {
+function LibraryCard({ tool, deleting, onDelete, onEdit, onOpen }) {
   const cardClassName = [
-    'rounded-[1.75rem] border border-white/80 bg-white/95 p-5 shadow-panel transition',
-    tool.isOwned ? '' : 'cursor-pointer hover:-translate-y-0.5 hover:border-pine/40',
-  ]
-    .filter(Boolean)
-    .join(' ');
+    'cursor-pointer rounded-[1.75rem] border border-white/80 bg-white/95 p-5 shadow-panel transition hover:-translate-y-0.5 hover:border-pine/40',
+  ].join(' ');
 
   return html`
     <article
       className=${cardClassName}
-      onClick=${tool.isOwned ? undefined : () => onOpen(tool.id)}
+      onClick=${() => onOpen(tool.id)}
     >
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -125,19 +122,36 @@ function LibraryCard({ tool, onEdit, onOpen }) {
       </div>
       <p className="mt-4 text-sm leading-6 text-slate-600">${tool.prompt}</p>
       ${tool.isOwned
-        ? html`<button
-            className="mt-5 inline-flex items-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-ink transition hover:border-pine hover:text-pine"
-            type="button"
-            onClick=${() => onEdit(tool.id)}
-          >
-            Edit
-          </button>`
-        : html`<p className="mt-5 text-sm font-medium text-pine">Click to open in a new tab</p>`}
+        ? html`<div className="mt-5 flex flex-wrap gap-3">
+            <button
+              className="inline-flex items-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-ink transition hover:border-pine hover:text-pine"
+              type="button"
+              onClick=${(event) => {
+                event.stopPropagation();
+                onEdit(tool.id);
+              }}
+            >
+              Edit
+            </button>
+            <button
+              className="inline-flex items-center rounded-full border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:border-rose-500 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-50"
+              type="button"
+              disabled=${deleting}
+              onClick=${(event) => {
+                event.stopPropagation();
+                onDelete(tool);
+              }}
+            >
+              ${deleting ? 'Deleting...' : 'Delete'}
+            </button>
+          </div>`
+        : null}
+      <p className="mt-5 text-sm font-medium text-pine">Click to open in a new tab</p>
     </article>
   `;
 }
 
-function LibraryView({ user, tools, loading, onCreate, onEdit, onLogout, onOpen }) {
+function LibraryView({ user, tools, loading, deletingToolId, onCreate, onDelete, onEdit, onLogout, onOpen }) {
   return html`
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
       <header className="rounded-[2rem] border border-white/70 bg-white/85 p-6 shadow-panel backdrop-blur sm:p-8">
@@ -178,6 +192,8 @@ function LibraryView({ user, tools, loading, onCreate, onEdit, onLogout, onOpen 
                 (tool) => html`<${LibraryCard}
                   key=${tool.id}
                   tool=${tool}
+                  deleting=${deletingToolId === tool.id}
+                  onDelete=${onDelete}
                   onEdit=${onEdit}
                   onOpen=${onOpen}
                 />`
@@ -456,6 +472,31 @@ function App() {
     }
   }
 
+  async function handleDelete(tool) {
+    const confirmed = window.confirm(`Delete "${tool.name}" from every library?`);
+    if (!confirmed) {
+      return;
+    }
+
+    setError('');
+    setNotice('');
+    setWorking(`delete-${tool.id}`);
+    try {
+      await requestJson(`/api/tools/${tool.id}`, { method: 'DELETE' });
+      setTools((current) => current.filter((item) => item.id !== tool.id));
+      setDraft((current) => (current.toolId === tool.id ? emptyDraft() : current));
+      if (view !== 'library') {
+        setView('library');
+      }
+      setNotice('Tool deleted from every library.');
+      loadLibrary().catch(() => {});
+    } catch (deleteError) {
+      setError(deleteError.message);
+    } finally {
+      setWorking('');
+    }
+  }
+
   function handleOpenNewTab() {
     if (draft.html) {
       openToolPreview(draft.html);
@@ -481,7 +522,9 @@ function App() {
               user=${user}
               tools=${tools}
               loading=${loadingLibrary}
+              deletingToolId=${working.startsWith('delete-') ? Number(working.slice(7)) : null}
               onCreate=${startNewTool}
+              onDelete=${handleDelete}
               onEdit=${editTool}
               onLogout=${handleLogout}
               onOpen=${openSharedTool}

@@ -151,6 +151,26 @@ function createApp({
     })
   );
 
+  app.delete('/api/tools/:id', requireAuth, (req, res) => {
+    const toolId = Number(req.params.id);
+    if (!Number.isInteger(toolId) || toolId < 1) {
+      return sendError(res, 400, 'Tool not found.');
+    }
+    try {
+      const tool = store.deleteTool({ toolId, ownerId: req.session.userId });
+      store.logUsage({ userId: req.session.userId, action: 'delete', details: tool.name });
+      res.json({ ok: true });
+    } catch (error) {
+      if (error.message === 'Tool not found.') {
+        return sendError(res, 404, error.message);
+      }
+      if (error.message.includes('only the tool owner')) {
+        return sendError(res, 403, error.message);
+      }
+      return sendError(res, 500, error.message || 'Something went wrong.');
+    }
+  });
+
   app.get('/', (req, res) => res.sendFile(path.join(publicDir, 'index.html')));
   app.get('/app.js', (req, res) => res.sendFile(path.join(publicDir, 'app.js')));
 
