@@ -3,8 +3,11 @@ const path = require('node:path');
 const express = require('express');
 const session = require('express-session');
 
+const { loadEnvFile } = require('./env');
 const { createDb } = require('./db');
 const { generateTool } = require('./codegen');
+
+loadEnvFile();
 
 function sanitizeUser(user) {
   return { id: user.id, email: user.email, createdAt: user.createdAt };
